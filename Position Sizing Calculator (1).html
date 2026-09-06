@@ -1,0 +1,1114 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Position Sizing & Risk Management Terminal</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Pretendard & JetBrains Mono Fonts -->
+  <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet">
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Pretendard', '-apple-system', 'BlinkMacSystemFont', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            terminal: {
+              bg: '#000000',
+              card: '#0a0a0a',
+              border: '#262626',
+              accent: '#ffffff',
+              long: '#ffffff',
+              short: '#737373',
+              warning: '#e5e5e5'
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: #000000;
+    }
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    input[type="number"] {
+      -moz-appearance: textfield;
+    }
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #000000;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #262626;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #404040;
+    }
+    .glow-monochrome {
+      box-shadow: 0 0 30px -5px rgba(255, 255, 255, 0.15);
+    }
+  </style>
+</head>
+<body class="text-neutral-100 min-h-screen bg-black text-neutral-100" id="body-root">
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <div class="max-w-7xl mx-auto px-4 py-4 md:py-6">
+    
+    <!-- Header -->
+    <header class="flex flex-col md:flex-row justify-between items-start md:items-center pb-6 border-b border-neutral-800 gap-4 mb-6">
+      <div>
+        <div class="flex items-center gap-2.5 mb-1">
+          <div class="p-2 rounded-lg bg-neutral-900 border border-neutral-700 text-white">
+            <i data-lucide="shield-check" class="w-6 h-6"></i>
+          </div>
+          <div>
+            <h1 class="text-xl md:text-2xl font-black tracking-tight font-mono text-white flex items-center gap-2">
+              POSITION SIZING <span class="text-xs px-2 py-0.5 rounded bg-white text-black font-bold border border-white">PRO TERMINAL</span>
+            </h1>
+            <p class="text-xs text-neutral-400">리스크 관리가 지속 가능한 트레이딩의 유일한 생존 법칙입니다.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2.5 w-full md:w-auto justify-end">
+        <!-- Quick Tools Modal Triggers -->
+        <button onclick="openModal('recovery-modal')" class="text-xs px-3 py-2 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-neutral-200 border border-neutral-700 transition-colors flex items-center gap-1.5 font-mono">
+          <i data-lucide="activity" class="w-3.5 h-3.5 text-white"></i> 복구 수익률 계산기
+        </button>
+        <button onclick="openModal('atr-modal')" class="text-xs px-3 py-2 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-neutral-200 border border-neutral-700 transition-colors flex items-center gap-1.5 font-mono">
+          <i data-lucide="gauge" class="w-3.5 h-3.5 text-white"></i> ATR 손절 계산기
+        </button>
+
+        <!-- Auth Status Button -->
+        <button id="auth-btn" onclick="toggleAuthModal()" class="flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-neutral-200 font-mono transition-colors">
+          <i data-lucide="user" class="w-3.5 h-3.5 text-white"></i>
+          <span id="auth-btn-text">게스트 모드</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- STEP 1: Market & Asset Selection -->
+    <div class="mb-6 bg-neutral-950 p-4 md:p-5 rounded-2xl border border-neutral-800 shadow-xl">
+      <div class="flex justify-between items-center mb-3">
+        <label class="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5 font-mono">
+          <span class="w-5 h-5 rounded-full bg-white text-black inline-flex items-center justify-center text-[11px] font-bold">1</span>
+          거래 자산군 및 시장 방향성 설정
+        </label>
+        <span class="text-[11px] text-neutral-400 font-mono" id="market-status-desc">미국 주식 ($) · 롱 포지션</span>
+      </div>
+      
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-4">
+        <!-- Market Selection -->
+        <div class="md:col-span-7">
+          <span class="text-xs text-neutral-400 mb-1.5 block">거래 시장 선택</span>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2" id="market-selector">
+            <button onclick="setMarket('us')" id="market-us" class="py-2.5 px-3 text-xs font-bold rounded-xl border text-center transition-all flex items-center justify-center gap-1.5">
+              <span>미국주식 ($)</span>
+            </button>
+            <button onclick="setMarket('kr')" id="market-kr" class="py-2.5 px-3 text-xs font-bold rounded-xl border text-center transition-all flex items-center justify-center gap-1.5">
+              <span>국내주식 (₩)</span>
+            </button>
+            <button onclick="setMarket('crypto')" id="market-crypto" class="py-2.5 px-3 text-xs font-bold rounded-xl border text-center transition-all flex items-center justify-center gap-1.5">
+              <span>코인/선물 (USDT)</span>
+            </button>
+            <button onclick="setMarket('forex')" id="market-forex" class="py-2.5 px-3 text-xs font-bold rounded-xl border text-center transition-all flex items-center justify-center gap-1.5">
+              <span>외환/통화 ($)</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Position Direction Selection -->
+        <div class="md:col-span-5">
+          <span class="text-xs text-neutral-400 mb-1.5 block">포지션 방향</span>
+          <div class="grid grid-cols-2 gap-2">
+            <button onclick="setDirection('LONG')" id="dir-long" class="py-2.5 px-3 text-xs font-bold rounded-xl border text-center transition-all flex items-center justify-center gap-2">
+              <i data-lucide="trending-up" class="w-4 h-4"></i> 롱 (Long / 매수)
+            </button>
+            <button onclick="setDirection('SHORT')" id="dir-short" class="py-2.5 px-3 text-xs font-bold rounded-xl border text-center transition-all flex items-center justify-center gap-2">
+              <i data-lucide="trending-down" class="w-4 h-4"></i> 숏 (Short / 공매도)
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MAIN GRID: Inputs & Key Results -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+      <!-- STEP 2: Condition Inputs -->
+      <div class="lg:col-span-7 bg-neutral-950 p-5 md:p-6 rounded-2xl border border-neutral-800 shadow-xl flex flex-col justify-between">
+        <div>
+          <div class="flex justify-between items-center mb-4">
+            <label class="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5 font-mono">
+              <span class="w-5 h-5 rounded-full bg-white text-black inline-flex items-center justify-center text-[11px] font-bold">2</span>
+              거래 조건 및 리스크 파라미터
+            </label>
+            <button onclick="resetInputs()" class="text-xs text-neutral-400 hover:text-white flex items-center gap-1 px-2 py-1 rounded bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 transition-colors font-mono">
+              <i data-lucide="rotate-ccw" class="w-3 h-3"></i> 값 초기화
+            </button>
+          </div>
+
+          <div class="space-y-4">
+            <!-- Ticker Symbol & Pre-sets -->
+            <div>
+              <div class="flex justify-between text-xs mb-1">
+                <span class="text-neutral-300 font-medium">종목명 / 티커 심볼</span>
+                <span class="text-neutral-500 text-[11px]">빠른 선택 예시</span>
+              </div>
+              <div class="flex gap-2">
+                <input type="text" id="input-ticker" placeholder="예: NVDA, BTCUSDT, 삼성전자" class="w-full bg-black border border-neutral-800 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-white font-mono uppercase text-white transition-colors">
+                <div class="flex gap-1 shrink-0">
+                  <button onclick="quickSetTicker('NVDA')" class="px-2.5 py-1 text-xs bg-neutral-900 hover:bg-neutral-800 rounded-lg text-neutral-300 font-mono border border-neutral-700">NVDA</button>
+                  <button onclick="quickSetTicker('BTC')" class="px-2.5 py-1 text-xs bg-neutral-900 hover:bg-neutral-800 rounded-lg text-neutral-300 font-mono border border-neutral-700">BTC</button>
+                  <button onclick="quickSetTicker('TSLA')" class="px-2.5 py-1 text-xs bg-neutral-900 hover:bg-neutral-800 rounded-lg text-neutral-300 font-mono border border-neutral-700">TSLA</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Balance & Leverage -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <div class="flex justify-between text-xs mb-1">
+                  <span class="text-neutral-300 font-medium">총 운용 시드 (현재 잔고)</span>
+                  <span class="text-neutral-400 unit-label font-mono font-bold">USD</span>
+                </div>
+                <div class="relative">
+                  <input type="text" inputmode="decimal" id="input-balance" oninput="calculate()" placeholder="10000" class="numeric-input w-full bg-black border border-neutral-800 rounded-xl px-3.5 py-2.5 text-base font-bold font-mono text-white focus:outline-none focus:border-white transition-colors">
+                </div>
+                <div class="flex gap-1 mt-1.5">
+                  <button onclick="quickSetBalance(1000)" class="px-2 py-0.5 text-[11px] bg-neutral-900 hover:bg-neutral-800 rounded text-neutral-400 font-mono">1K</button>
+                  <button onclick="quickSetBalance(5000)" class="px-2 py-0.5 text-[11px] bg-neutral-900 hover:bg-neutral-800 rounded text-neutral-400 font-mono">5K</button>
+                  <button onclick="quickSetBalance(10000)" class="px-2 py-0.5 text-[11px] bg-neutral-900 hover:bg-neutral-800 rounded text-neutral-400 font-mono">10K</button>
+                  <button onclick="quickSetBalance(50000)" class="px-2 py-0.5 text-[11px] bg-neutral-900 hover:bg-neutral-800 rounded text-neutral-400 font-mono">50K</button>
+                  <button onclick="quickSetBalance(100000)" class="px-2 py-0.5 text-[11px] bg-neutral-900 hover:bg-neutral-800 rounded text-neutral-400 font-mono">100K</button>
+                </div>
+              </div>
+
+              <div>
+                <div class="flex justify-between text-xs mb-1">
+                  <span class="text-neutral-300 font-medium">레버리지 배율</span>
+                  <span class="text-neutral-400 font-mono" id="leverage-label">1X (현물)</span>
+                </div>
+                <div class="flex gap-2">
+                  <input type="text" inputmode="numeric" id="input-leverage" oninput="calculate()" placeholder="1" class="numeric-input w-full bg-black border border-neutral-800 rounded-xl px-3.5 py-2.5 text-base font-bold font-mono text-white focus:outline-none focus:border-white transition-colors">
+                  <div class="flex gap-1 shrink-0">
+                    <button onclick="quickSetLeverage(1)" class="px-2.5 py-1 text-xs bg-neutral-900 hover:bg-neutral-800 rounded-lg text-neutral-300 font-mono border border-neutral-700">1x</button>
+                    <button onclick="quickSetLeverage(5)" class="px-2.5 py-1 text-xs bg-neutral-900 hover:bg-neutral-800 rounded-lg text-neutral-300 font-mono border border-neutral-700">5x</button>
+                    <button onclick="quickSetLeverage(10)" class="px-2.5 py-1 text-xs bg-neutral-900 hover:bg-neutral-800 rounded-lg text-neutral-300 font-mono border border-neutral-700">10x</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Entry, Stop Loss & Take Profit Prices -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div>
+                <div class="flex justify-between text-xs mb-1">
+                  <span class="text-neutral-300 font-medium">진입 가격 (Entry)</span>
+                  <span class="text-neutral-500 unit-label">USD</span>
+                </div>
+                <input type="text" inputmode="decimal" id="input-entry" oninput="calculate()" placeholder="100.00" class="numeric-input w-full bg-black border border-neutral-800 rounded-xl px-3 py-2 text-sm font-bold font-mono text-white focus:outline-none focus:border-white transition-colors">
+              </div>
+
+              <div>
+                <div class="flex justify-between text-xs mb-1">
+                  <span class="text-neutral-300 font-bold">손절 가격 (Stop Loss)</span>
+                  <span class="text-neutral-500 unit-label">USD</span>
+                </div>
+                <input type="text" inputmode="decimal" id="input-stoploss" oninput="calculate()" placeholder="96.50" class="numeric-input w-full bg-black border border-neutral-700 rounded-xl px-3 py-2 text-sm font-bold font-mono text-white focus:outline-none focus:border-white transition-colors">
+              </div>
+
+              <div>
+                <div class="flex justify-between text-xs mb-1">
+                  <span class="text-neutral-300 font-bold">익절 목표가 (Target)</span>
+                  <span class="text-neutral-500 unit-label">USD</span>
+                </div>
+                <input type="text" inputmode="decimal" id="input-takeprofit" oninput="calculate()" placeholder="107.00" class="numeric-input w-full bg-black border border-neutral-700 rounded-xl px-3 py-2 text-sm font-bold font-mono text-white focus:outline-none focus:border-white transition-colors">
+              </div>
+            </div>
+
+            <!-- Maximum Risk (%) & Slippage Option -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <div class="flex justify-between text-xs mb-1">
+                  <span class="text-neutral-300 font-medium">허용 최대 손실율 (Risk)</span>
+                  <span class="text-neutral-400 font-mono">%</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <input type="text" inputmode="decimal" id="input-risk" oninput="calculate()" placeholder="1.0" class="numeric-input w-full bg-black border border-neutral-800 rounded-xl px-3.5 py-2 text-sm font-bold font-mono text-white focus:outline-none focus:border-white transition-colors">
+                  <div class="flex gap-1 shrink-0">
+                    <button onclick="setRiskQuick(0.5)" class="px-2 py-1 text-xs bg-neutral-900 hover:bg-neutral-800 text-neutral-300 rounded-lg border border-neutral-700">0.5%</button>
+                    <button onclick="setRiskQuick(1.0)" class="px-2 py-1 text-xs bg-neutral-900 hover:bg-neutral-800 text-neutral-300 rounded-lg border border-neutral-700">1.0%</button>
+                    <button onclick="setRiskQuick(2.0)" class="px-2 py-1 text-xs bg-neutral-900 hover:bg-neutral-800 text-neutral-300 rounded-lg border border-neutral-700">2.0%</button>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <div class="flex justify-between text-xs mb-1">
+                  <span class="text-neutral-300 font-medium">수수료 및 슬리피지 보정</span>
+                  <span class="text-neutral-400 font-mono">%</span>
+                </div>
+                <input type="text" inputmode="decimal" id="input-fee" oninput="calculate()" value="0.05" placeholder="0.05" class="numeric-input w-full bg-black border border-neutral-800 rounded-xl px-3.5 py-2 text-sm font-bold font-mono text-white focus:outline-none focus:border-white transition-colors">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-6 pt-4 border-t border-neutral-800 flex items-center justify-between gap-3">
+          <button onclick="openModal('scale-modal')" class="px-4 py-3 bg-neutral-900 hover:bg-neutral-800 text-neutral-200 font-semibold rounded-xl transition-colors text-xs flex items-center gap-2 border border-neutral-700">
+            <i data-lucide="layers" class="w-4 h-4 text-white"></i> 분할 진입 (DCA)
+          </button>
+          <button onclick="calculate()" class="flex-1 py-3 bg-white hover:bg-neutral-200 text-black font-extrabold rounded-xl transition-all text-sm flex items-center justify-center gap-2 border border-white active:scale-[0.99]">
+            <i data-lucide="calculator" class="w-4 h-4 text-black"></i> 포지션 사이징 재계산
+          </button>
+        </div>
+      </div>
+
+      <!-- STEP 3: Results Dashboard -->
+      <div class="lg:col-span-5 flex flex-col justify-between space-y-4">
+        
+        <!-- Primary Main Result Box -->
+        <div id="main-result-box" class="bg-black p-6 rounded-2xl border-2 border-white shadow-2xl relative overflow-hidden glow-monochrome transition-all">
+          <div class="absolute -right-6 -bottom-6 opacity-5 pointer-events-none text-white">
+            <i data-lucide="pie-chart" class="w-40 h-40"></i>
+          </div>
+
+          <div class="flex justify-between items-start mb-2">
+            <label class="text-xs font-bold text-white uppercase tracking-wider font-mono">STEP 3. 최종 주문 계산 결과</label>
+            <span id="risk-status-badge" class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-white text-black border border-white">
+              안전한 리스크 비율
+            </span>
+          </div>
+
+          <div class="text-xs text-neutral-400 mb-1">최대 주문 가능 수량 (Floor 내림 기준)</div>
+          
+          <div id="result-main-container" class="my-2">
+            <div class="flex items-baseline gap-2">
+              <span id="res-qty" class="text-5xl md:text-6xl font-black font-mono tracking-tight text-white">0</span>
+              <span id="unit-shares" class="text-xl font-bold text-neutral-400 font-mono">주</span>
+            </div>
+            <p class="text-xs text-neutral-500 mt-2 font-mono flex items-center gap-1" id="res-calc-note">
+              <i data-lucide="info" class="w-3.5 h-3.5 text-white inline"></i>
+              초과 손실을 절대 방지하기 위해 내림(Floor) 적용
+            </p>
+          </div>
+
+          <!-- Visual Position & Risk Bar -->
+          <div class="mt-4 pt-4 border-t border-neutral-800">
+            <div class="flex justify-between text-[11px] font-mono text-neutral-400 mb-1.5">
+              <span>손절 (<span id="bar-sl-pct" class="text-neutral-300">-0%</span>)</span>
+              <span>진입가</span>
+              <span>목표가 (<span id="bar-tp-pct" class="text-white">+0%</span>)</span>
+            </div>
+            <div class="h-3 w-full bg-neutral-900 rounded-full overflow-hidden flex p-0.5 gap-0.5 border border-neutral-700">
+              <div id="bar-sl-visual" class="h-full bg-neutral-600 rounded-l-full transition-all duration-300" style="width: 30%;"></div>
+              <div id="bar-tp-visual" class="h-full bg-white rounded-r-full transition-all duration-300" style="width: 70%;"></div>
+            </div>
+          </div>
+
+          <!-- Error Alert Banner -->
+          <div id="error-banner" class="hidden mt-3 p-3 bg-neutral-900 border border-neutral-600 rounded-xl text-neutral-200 text-xs flex items-center gap-2">
+            <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 text-white"></i>
+            <span id="error-message">오류가 발생했습니다.</span>
+          </div>
+        </div>
+
+        <!-- Result Summary Card -->
+        <div class="bg-neutral-950 p-5 rounded-2xl border border-neutral-800 shadow-xl space-y-3">
+          <div class="flex justify-between items-center text-xs font-bold text-neutral-400 uppercase tracking-wider font-mono">
+            <span>핵심 트레이딩 지표 요약</span>
+            <span class="text-white font-mono" id="res-rr-ratio">R:R 비율: 1 : 2.0</span>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3 text-sm">
+            <div class="p-3 bg-black rounded-xl border border-neutral-800">
+              <div class="text-[11px] text-neutral-500 mb-0.5">주당 리스크 (1주당 손실)</div>
+              <div id="res-risk-per-share" class="font-mono font-bold text-base text-neutral-200">0.00 <span class="text-xs font-normal text-neutral-500 unit-label">USD</span></div>
+            </div>
+
+            <div class="p-3 bg-black rounded-xl border border-neutral-800">
+              <div class="text-[11px] text-neutral-500 mb-0.5">최대 허용 예상 손실금</div>
+              <div id="res-max-loss" class="font-mono font-bold text-base text-white">0 <span class="text-xs font-normal text-neutral-500 unit-label">USD</span></div>
+            </div>
+
+            <div class="p-3 bg-black rounded-xl border border-neutral-800">
+              <div class="text-[11px] text-neutral-500 mb-0.5">총 필요 매수금 (포지션 가치)</div>
+              <div id="res-total-value" class="font-mono font-bold text-base text-white">0 <span class="text-xs font-normal text-neutral-500 unit-label">USD</span></div>
+            </div>
+
+            <div class="p-3 bg-black rounded-xl border border-neutral-800">
+              <div class="text-[11px] text-neutral-500 mb-0.5">목표 달성 시 예상 수익금</div>
+              <div id="res-target-profit" class="font-mono font-bold text-base text-white">0 <span class="text-xs font-normal text-neutral-500 unit-label">USD</span></div>
+            </div>
+
+            <div class="p-3 bg-black rounded-xl border border-neutral-800 col-span-2">
+              <div class="flex justify-between items-center">
+                <div>
+                  <div class="text-[11px] text-neutral-500 mb-0.5">필요 증거금 / 시드 대비 비중</div>
+                  <div id="res-margin-needed" class="font-mono font-bold text-sm text-neutral-200">0 USD (0%)</div>
+                </div>
+                <div class="text-right">
+                  <div class="text-[11px] text-neutral-500 mb-0.5">청산 추정가 (선물)</div>
+                  <div id="res-est-liq" class="font-mono font-bold text-sm text-neutral-300">-</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Save Trade Log Button -->
+          <button onclick="saveTradeLog()" id="btn-save-trade" class="w-full mt-2 py-3 bg-neutral-900 hover:bg-neutral-800 text-neutral-200 text-xs font-bold rounded-xl transition-all border border-neutral-700 flex items-center justify-center gap-2 active:scale-[0.99] font-mono">
+            <i data-lucide="bookmark-plus" class="w-4 h-4 text-white"></i> 계산된 저널 기록 저장하기
+          </button>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- STEP 4: Trade Log & History Section -->
+    <div class="mt-8 bg-neutral-950 p-5 md:p-6 rounded-2xl border border-neutral-800 shadow-xl">
+      <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 mb-4 pb-3 border-b border-neutral-800">
+        <div>
+          <div class="flex items-center gap-2">
+            <i data-lucide="history" class="w-5 h-5 text-white"></i>
+            <h3 class="text-base font-bold font-mono text-white">TRADE JOURNAL (리스크 관리 일지)</h3>
+          </div>
+          <p class="text-xs text-neutral-400 mt-0.5">원칙대로 진입한 포지션 기록을 관리하고 트레이딩 일지로 활용하세요.</p>
+        </div>
+
+        <div class="flex items-center gap-2 w-full md:w-auto justify-end">
+          <span id="log-notice" class="text-xs px-3 py-1 bg-neutral-900 text-neutral-400 rounded-lg border border-neutral-700 font-mono">
+            로컬 저장소 동기화 중
+          </span>
+          <button onclick="exportLogsToCSV()" class="text-xs px-3 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 rounded-lg border border-neutral-700 flex items-center gap-1 transition-colors font-mono">
+            <i data-lucide="download" class="w-3.5 h-3.5 text-white"></i> CSV 내보내기
+          </button>
+        </div>
+      </div>
+
+      <!-- Trade Memo Textarea -->
+      <div class="mb-4">
+        <label class="block text-xs font-semibold text-neutral-400 mb-1">매매 메모 (진입 근거 및 차트 관점)</label>
+        <textarea id="trade-memo" maxlength="2000" rows="2" placeholder="진입 타점, 주요 지지/저항선, 위험 요인 등을 메모하세요..." class="w-full bg-black border border-neutral-800 rounded-xl p-3 text-xs focus:outline-none focus:border-white text-white resize-none font-sans transition-colors"></textarea>
+      </div>
+
+      <!-- Log Table Container -->
+      <div class="overflow-x-auto rounded-xl border border-neutral-800">
+        <table class="w-full text-left text-xs border-collapse">
+          <thead>
+            <tr class="bg-black text-neutral-400 border-b border-neutral-800 font-mono">
+              <th class="py-3 px-3">날짜/시간</th>
+              <th class="py-3 px-3">종목</th>
+              <th class="py-3 px-3">방향</th>
+              <th class="py-3 px-3 text-right">진입가</th>
+              <th class="py-3 px-3 text-right">손절가</th>
+              <th class="py-3 px-3 text-right">목표가</th>
+              <th class="py-3 px-3 text-right">리스크</th>
+              <th class="py-3 px-3 text-right">적정 수량</th>
+              <th class="py-3 px-3">메모</th>
+              <th class="py-3 px-3 text-center">작업</th>
+            </tr>
+          </thead>
+          <tbody id="trade-log-tbody" class="divide-y divide-neutral-800">
+            <!-- Dynamic rows populated via JS -->
+            <tr>
+              <td colspan="10" class="py-8 text-center text-neutral-500 font-mono">저장된 거래 기록이 없습니다.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- MODAL 1: DCA / Scale-in Calculator -->
+    <div id="scale-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+      <div class="bg-neutral-950 border border-neutral-800 rounded-2xl p-6 max-w-lg w-full relative shadow-2xl">
+        <button onclick="closeModal('scale-modal')" class="absolute top-4 right-4 text-neutral-400 hover:text-white">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+
+        <div class="flex items-center gap-2 mb-3">
+          <i data-lucide="layers" class="w-5 h-5 text-white"></i>
+          <h3 class="text-base font-bold font-mono text-white">분할 진입 (DCA) 평단가 계산기</h3>
+        </div>
+        <p class="text-xs text-neutral-400 mb-4">여러 가격대에서 나누어 분할 진입 시 평단가와 총 리스크를 계산합니다.</p>
+
+        <div class="space-y-3 mb-4">
+          <div class="grid grid-cols-12 gap-2 text-[11px] text-neutral-400 font-mono mb-1">
+            <span class="col-span-3">차수</span>
+            <span class="col-span-5">진입 가격</span>
+            <span class="col-span-4">비중 (%)</span>
+          </div>
+
+          <div class="grid grid-cols-12 gap-2 items-center">
+            <span class="col-span-3 text-xs font-mono text-neutral-300">1차 (1차 타점)</span>
+            <input type="number" id="dca-price-1" placeholder="100" class="col-span-5 bg-black border border-neutral-800 rounded-lg px-2.5 py-1.5 text-xs font-mono text-white">
+            <input type="number" id="dca-ratio-1" value="40" class="col-span-4 bg-black border border-neutral-800 rounded-lg px-2.5 py-1.5 text-xs font-mono text-white">
+          </div>
+
+          <div class="grid grid-cols-12 gap-2 items-center">
+            <span class="col-span-3 text-xs font-mono text-neutral-300">2차 (2차 타점)</span>
+            <input type="number" id="dca-price-2" placeholder="98" class="col-span-5 bg-black border border-neutral-800 rounded-lg px-2.5 py-1.5 text-xs font-mono text-white">
+            <input type="number" id="dca-ratio-2" value="30" class="col-span-4 bg-black border border-neutral-800 rounded-lg px-2.5 py-1.5 text-xs font-mono text-white">
+          </div>
+
+          <div class="grid grid-cols-12 gap-2 items-center">
+            <span class="col-span-3 text-xs font-mono text-neutral-300">3차 (3차 타점)</span>
+            <input type="number" id="dca-price-3" placeholder="95" class="col-span-5 bg-black border border-neutral-800 rounded-lg px-2.5 py-1.5 text-xs font-mono text-white">
+            <input type="number" id="dca-ratio-3" value="30" class="col-span-4 bg-black border border-neutral-800 rounded-lg px-2.5 py-1.5 text-xs font-mono text-white">
+          </div>
+        </div>
+
+        <div class="p-3 bg-black rounded-xl border border-neutral-800 mb-4 space-y-1">
+          <div class="flex justify-between text-xs">
+            <span class="text-neutral-400">가중 평균 진입가 (Avg Entry):</span>
+            <span id="dca-avg-res" class="font-mono font-bold text-white">0.00</span>
+          </div>
+        </div>
+
+        <button onclick="applyDCAToMain()" class="w-full py-2.5 bg-white hover:bg-neutral-200 text-black font-bold text-xs rounded-xl transition-colors font-mono">
+          계산된 평균 진입가를 메인에 적용하기
+        </button>
+      </div>
+    </div>
+
+    <!-- MODAL 2: Recovery Gain Needed Calculator -->
+    <div id="recovery-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+      <div class="bg-neutral-950 border border-neutral-800 rounded-2xl p-6 max-w-md w-full relative shadow-2xl">
+        <button onclick="closeModal('recovery-modal')" class="absolute top-4 right-4 text-neutral-400 hover:text-white">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+
+        <div class="flex items-center gap-2 mb-2">
+          <i data-lucide="activity" class="w-5 h-5 text-white"></i>
+          <h3 class="text-base font-bold font-mono text-white">손실 복구 필요 수익률 시뮬레이터</h3>
+        </div>
+        <p class="text-xs text-neutral-400 mb-4">계좌가 -X% 손실을 입었을 때 원금을 복구하기 위해 필요한 수익률을 확인하세요.</p>
+
+        <div class="space-y-3 mb-4">
+          <div>
+            <label class="block text-xs text-neutral-400 mb-1">현재 발생한 손실률 (-%)</label>
+            <input type="number" id="input-drawdown" oninput="calcRecovery()" placeholder="20" value="20" class="w-full bg-black border border-neutral-800 rounded-xl px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-white">
+          </div>
+
+          <div class="p-4 bg-black rounded-xl border border-neutral-800 text-center space-y-1">
+            <div class="text-xs text-neutral-400">원금 복구를 위한 필요 수익률</div>
+            <div id="res-recovery-pct" class="text-3xl font-black font-mono text-white">+25.00%</div>
+          </div>
+        </div>
+
+        <p class="text-[11px] text-neutral-500 leading-relaxed">
+          * 손실율이 깊어질수록 필요한 수익률은 비선형적으로 기하급수적으로 증가합니다. (예: -50% 손실 시 원금 복구엔 +100% 수익 필요)
+        </p>
+      </div>
+    </div>
+
+    <!-- MODAL 3: ATR Stop Loss Helper -->
+    <div id="atr-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+      <div class="bg-neutral-950 border border-neutral-800 rounded-2xl p-6 max-w-md w-full relative shadow-2xl">
+        <button onclick="closeModal('atr-modal')" class="absolute top-4 right-4 text-neutral-400 hover:text-white">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+
+        <div class="flex items-center gap-2 mb-2">
+          <i data-lucide="gauge" class="w-5 h-5 text-white"></i>
+          <h3 class="text-base font-bold font-mono text-white">ATR 변동성 기반 손절가 계산기</h3>
+        </div>
+        <p class="text-xs text-neutral-400 mb-4">차트의 ATR (Average True Range) 값 기반으로 노이즈를 피하는 손절가를 산출합니다.</p>
+
+        <div class="space-y-3 mb-4">
+          <div>
+            <label class="block text-xs text-neutral-400 mb-1">현재 진입가</label>
+            <input type="number" id="atr-entry" placeholder="100" class="w-full bg-black border border-neutral-800 rounded-xl px-3 py-2 text-sm font-mono text-white">
+          </div>
+          <div>
+            <label class="block text-xs text-neutral-400 mb-1">지표 ATR 값</label>
+            <input type="number" id="atr-val" placeholder="2.5" class="w-full bg-black border border-neutral-800 rounded-xl px-3 py-2 text-sm font-mono text-white">
+          </div>
+          <div>
+            <label class="block text-xs text-neutral-400 mb-1">ATR 승수 (기본 1.5 ~ 2.0x)</label>
+            <input type="number" id="atr-mult" value="2.0" placeholder="2.0" class="w-full bg-black border border-neutral-800 rounded-xl px-3 py-2 text-sm font-mono text-white">
+          </div>
+
+          <button onclick="calcATRStop()" class="w-full py-2 bg-neutral-900 hover:bg-neutral-800 text-xs font-bold rounded-xl border border-neutral-700 font-mono text-white">
+            ATR 손절가 계산
+          </button>
+
+          <div class="p-3 bg-black rounded-xl border border-neutral-800 flex justify-between items-center text-xs">
+            <span class="text-neutral-400">추천 손절가:</span>
+            <span id="res-atr-sl" class="font-mono font-bold text-white">0.00</span>
+          </div>
+        </div>
+
+        <button onclick="applyATRToMain()" class="w-full py-2.5 bg-white hover:bg-neutral-200 text-black font-bold text-xs rounded-xl transition-colors font-mono">
+          메인 손절가에 즉시 적용
+        </button>
+      </div>
+    </div>
+
+    <!-- AUTH MODAL -->
+    <div id="auth-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+      <div class="bg-neutral-950 border border-neutral-800 rounded-2xl p-6 max-w-sm w-full relative shadow-2xl">
+        <button onclick="toggleAuthModal()" class="absolute top-4 right-4 text-neutral-400 hover:text-white">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+
+        <h3 class="text-base font-bold mb-1 text-white">사용자 계정 상태</h3>
+        <p class="text-xs text-neutral-400 mb-4">
+          계산기는 무설치 게스트 모드로 동작하며, Firestore 클라우드 동기화를 통해 기기간 데이터를 공유할 수 있습니다.
+        </p>
+
+        <div class="space-y-3">
+          <button onclick="handleAnonymousAuth()" class="w-full py-2.5 bg-white hover:bg-neutral-200 text-black font-bold text-xs rounded-xl transition-colors flex items-center justify-center gap-2 font-mono">
+            <i data-lucide="shield" class="w-4 h-4"></i> 클라우드 세션 시작 / 동기화
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- FOOTER -->
+    <footer class="mt-12 text-center border-t border-neutral-800 pt-8 pb-12">
+      <div class="inline-block px-4 py-1.5 bg-neutral-950 rounded-full border border-neutral-800 mb-3">
+        <span class="text-xs font-mono font-bold tracking-widest text-neutral-200 uppercase">RISK DISCIPLINE & CAPITAL PRESERVATION</span>
+      </div>
+      <p class="text-sm font-semibold text-neutral-300">
+        “손절 위치는 차트 구조가 결정하고, 포지션 크기는 당신의 리스크가 결정한다.”
+      </p>
+      <p class="text-xs text-neutral-500 mt-2 font-mono">
+        Position Sizing & Risk Management Terminal &copy; 2026
+      </p>
+    </footer>
+
+  </div>
+
+  <script>
+    // --- GLOBAL APPLICATION STATE ---
+    const state = {
+      market: 'us', // 'us', 'kr', 'crypto', 'forex'
+      direction: 'LONG', // 'LONG', 'SHORT'
+      currency: '$',
+      unitName: '주',
+      user: null,
+      logs: []
+    };
+
+    // --- MOBILE PASTE & NUMBER SANITIZER ---
+    function sanitizeNumericString(str) {
+      if (str === null || str === undefined) return '';
+      // 전각 숫자를 반각 숫자로 변환
+      let normalized = String(str).replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xfee0));
+      // 숫자, 마이너스, 마침표를 제외한 모든 문자를 제거
+      let cleaned = normalized.replace(/[^0-9.-]/g, '');
+      const isNegative = cleaned.startsWith('-');
+      cleaned = cleaned.replace(/-/g, '');
+      const parts = cleaned.split('.');
+      if (parts.length > 2) {
+        cleaned = parts[0] + '.' + parts.slice(1).join('');
+      }
+      return (isNegative ? '-' : '') + cleaned;
+    }
+
+    function parseNumericInput(val) {
+      const cleaned = sanitizeNumericString(val);
+      const parsed = parseFloat(cleaned);
+      return isNaN(parsed) ? NaN : parsed;
+    }
+
+    function setupMobilePasteListeners() {
+      const selector = '.numeric-input, input[inputmode="decimal"], input[inputmode="numeric"], input[type="number"]';
+      document.querySelectorAll(selector).forEach(input => {
+        // 모바일 붙여넣기(Paste) 이벤트 안전 처리
+        input.addEventListener('paste', (e) => {
+          try {
+            const clipboardData = e.clipboardData || window.clipboardData;
+            if (!clipboardData) return;
+            
+            const pastedData = clipboardData.getData('text');
+            if (!pastedData) return;
+
+            e.preventDefault();
+            const cleaned = sanitizeNumericString(pastedData);
+            
+            let start = 0, end = 0;
+            try {
+              start = input.selectionStart || 0;
+              end = input.selectionEnd || 0;
+            } catch (err) {
+              start = (input.value || '').length;
+              end = start;
+            }
+
+            const val = input.value || '';
+            input.value = val.substring(0, start) + cleaned + val.substring(end);
+            
+            // 즉시 계산 트리거
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+          } catch (err) {
+            // 예외 발생 시 안전하게 기본 동작 후 수동 정형화
+            setTimeout(() => {
+              input.value = sanitizeNumericString(input.value);
+              calculate();
+            }, 10);
+          }
+        });
+
+        // 입력(input) 시 특수문자/쉼표 자동 제거 및 검증
+        input.addEventListener('input', () => {
+          if (/[^0-9.-]/.test(input.value)) {
+            const cleaned = sanitizeNumericString(input.value);
+            if (cleaned !== input.value) {
+              input.value = cleaned;
+            }
+          }
+        });
+
+        // 포커스 아웃(blur) 시 입력값 최종 정돈
+        input.addEventListener('blur', () => {
+          if (input.value) {
+            const cleaned = sanitizeNumericString(input.value);
+            if (cleaned !== input.value) {
+              input.value = cleaned;
+              calculate();
+            }
+          }
+        });
+      });
+    }
+
+    // --- INITIALIZATION ON LOAD ---
+    window.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+      setupMobilePasteListeners();
+      setMarket('us');
+      
+      // Default initial mock data
+      document.getElementById('input-balance').value = "10000";
+      document.getElementById('input-leverage').value = "1";
+      document.getElementById('input-entry').value = "100";
+      document.getElementById('input-stoploss').value = "96.50";
+      document.getElementById('input-takeprofit').value = "107.00";
+      document.getElementById('input-risk').value = "1";
+      document.getElementById('input-fee').value = "0.05";
+      document.getElementById('input-ticker').value = "NVDA";
+
+      calculate();
+      calcRecovery();
+    });
+
+    // --- NUMBER FORMATTING ---
+    function formatNum(num, decimals = 2) {
+      if (isNaN(num) || num === null) return "0";
+      return new Intl.NumberFormat('ko-KR', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: decimals
+      }).format(num);
+    }
+
+    // --- CORE CALCULATOR & MATHEMATICS ---
+    function calculate() {
+      const balance = parseNumericInput(document.getElementById('input-balance').value);
+      const leverage = parseNumericInput(document.getElementById('input-leverage').value) || 1;
+      const entry = parseNumericInput(document.getElementById('input-entry').value);
+      const stoploss = parseNumericInput(document.getElementById('input-stoploss').value);
+      const takeprofit = parseNumericInput(document.getElementById('input-takeprofit').value);
+      const riskPercent = parseNumericInput(document.getElementById('input-risk').value);
+      const feePercent = parseNumericInput(document.getElementById('input-fee').value) || 0;
+
+      const errorBanner = document.getElementById('error-banner');
+      const errorMessage = document.getElementById('error-message');
+      const qtyEl = document.getElementById('res-qty');
+
+      function showError(msg) {
+        errorBanner.classList.remove('hidden');
+        errorMessage.textContent = msg;
+        qtyEl.textContent = "0";
+        qtyEl.className = "text-5xl md:text-6xl font-black font-mono tracking-tight text-neutral-600";
+        
+        document.getElementById('res-risk-per-share').innerHTML = `0.00 <span class="text-xs font-normal text-neutral-500 unit-label">${state.currency}</span>`;
+        document.getElementById('res-max-loss').innerHTML = `0 <span class="text-xs font-normal text-neutral-500 unit-label">${state.currency}</span>`;
+        document.getElementById('res-total-value').innerHTML = `0 <span class="text-xs font-normal text-neutral-500 unit-label">${state.currency}</span>`;
+        document.getElementById('res-target-profit').innerHTML = `0 <span class="text-xs font-normal text-neutral-500 unit-label">${state.currency}</span>`;
+        document.getElementById('res-margin-needed').textContent = `0 ${state.currency} (0%)`;
+        document.getElementById('res-est-liq').textContent = `-`;
+        document.getElementById('res-rr-ratio').textContent = `R:R 비율: -`;
+      }
+
+      errorBanner.classList.add('hidden');
+
+      if (isNaN(entry) || entry <= 0) {
+        if (document.getElementById('input-entry').value !== "") showError("올바른 진입 가격을 입력하세요.");
+        return;
+      }
+
+      if (isNaN(stoploss) || stoploss <= 0) {
+        if (document.getElementById('input-stoploss').value !== "") showError("올바른 손절 가격을 입력하세요.");
+        return;
+      }
+
+      if (isNaN(riskPercent) || riskPercent <= 0) {
+        if (document.getElementById('input-risk').value !== "") showError("리스크는 0%보다 커야 합니다.");
+        return;
+      }
+
+      if (riskPercent >= 100) {
+        showError("리스크 비율은 100% 미만이어야 합니다.");
+        return;
+      }
+
+      if (isNaN(balance) || balance <= 0) return;
+
+      // Position Direction Validations
+      if (state.direction === 'LONG' && stoploss >= entry) {
+        showError("롱 포지션: 손절가는 진입가보다 낮아야 합니다.");
+        return;
+      }
+
+      if (state.direction === 'SHORT' && stoploss <= entry) {
+        showError("숏 포지션: 진입가는 손절가보다 낮아야 합니다.");
+        return;
+      }
+
+      // Calculations
+      const riskPerShare = Math.abs(entry - stoploss);
+      const maxLossAmount = balance * (riskPercent / 100);
+
+      // Raw Sizing Formula
+      let rawQty = (balance * leverage * (riskPercent / 100)) / (riskPerShare + (entry * feePercent / 100));
+      
+      // Floor count for stocks/crypto
+      let exactQty = Math.floor(rawQty);
+      if (state.market === 'forex') exactQty = parseFloat(rawQty.toFixed(2));
+
+      const totalValue = exactQty * entry;
+      const marginNeeded = totalValue / leverage;
+      const marginRatio = (marginNeeded / balance) * 100;
+
+      // Target Profit Calculation
+      let targetProfit = 0;
+      let rrRatio = 0;
+      let stopLossPct = (Math.abs(entry - stoploss) / entry) * 100;
+      let takeProfitPct = 0;
+
+      if (!isNaN(takeprofit) && takeprofit > 0) {
+        const profitPerShare = Math.abs(takeprofit - entry);
+        targetProfit = exactQty * profitPerShare;
+        rrRatio = profitPerShare / riskPerShare;
+        takeProfitPct = (profitPerShare / entry) * 100;
+      }
+
+      // Estimated Liquidation Price for Crypto Futures
+      let estLiqPrice = 0;
+      if (leverage > 1) {
+        if (state.direction === 'LONG') {
+          estLiqPrice = entry * (1 - (1 / leverage) + 0.005);
+        } else {
+          estLiqPrice = entry * (1 + (1 / leverage) - 0.005);
+        }
+      }
+
+      // Render Outputs
+      qtyEl.textContent = formatNum(exactQty, state.market === 'forex' ? 2 : 0);
+      qtyEl.className = "text-5xl md:text-6xl font-black font-mono tracking-tight text-white";
+
+      document.getElementById('res-risk-per-share').innerHTML = `${formatNum(riskPerShare, 4)} <span class="text-xs font-normal text-neutral-500 unit-label">${state.currency}</span>`;
+      document.getElementById('res-max-loss').innerHTML = `${formatNum(maxLossAmount, 2)} <span class="text-xs font-normal text-neutral-500 unit-label">${state.currency}</span>`;
+      document.getElementById('res-total-value').innerHTML = `${formatNum(totalValue, 2)} <span class="text-xs font-normal text-neutral-500 unit-label">${state.currency}</span>`;
+      document.getElementById('res-target-profit').innerHTML = `${formatNum(targetProfit, 2)} <span class="text-xs font-normal text-neutral-500 unit-label">${state.currency}</span>`;
+      document.getElementById('res-margin-needed').textContent = `${formatNum(marginNeeded, 2)} ${state.currency} (${formatNum(marginRatio, 1)}%)`;
+      
+      document.getElementById('res-est-liq').textContent = estLiqPrice > 0 ? `${formatNum(estLiqPrice, 2)} ${state.currency}` : '해당 없음';
+      document.getElementById('res-rr-ratio').textContent = rrRatio > 0 ? `R:R 비율: 1 : ${formatNum(rrRatio, 2)}` : `R:R 비율: -`;
+
+      // Update Visual Risk Bar
+      document.getElementById('bar-sl-pct').textContent = `-${formatNum(stopLossPct, 1)}%`;
+      document.getElementById('bar-tp-pct').textContent = `+${formatNum(takeProfitPct, 1)}%`;
+
+      const slWidth = Math.min(Math.max((stopLossPct / (stopLossPct + takeProfitPct || 10)) * 100, 15), 85);
+      document.getElementById('bar-sl-visual').style.width = `${slWidth}%`;
+      document.getElementById('bar-tp-visual').style.width = `${100 - slWidth}%`;
+
+      // Risk level status badge
+      const riskBadge = document.getElementById('risk-status-badge');
+      if (riskPercent <= 1.0) {
+        riskBadge.textContent = "안전한 리스크 (1% 이하)";
+        riskBadge.className = "px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-white text-black border border-white font-mono";
+      } else if (riskPercent <= 2.5) {
+        riskBadge.textContent = "적정 리스크 (1%~2.5%)";
+        riskBadge.className = "px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-neutral-800 text-white border border-neutral-600 font-mono";
+      } else {
+        riskBadge.textContent = "고위험 포지션 (2.5% 초과)";
+        riskBadge.className = "px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-black text-white border-2 border-white font-mono";
+      }
+    }
+
+    // --- TRADE LOG STORAGE & ACTIONS ---
+    function saveTradeLog() {
+      const ticker = (document.getElementById('input-ticker').value || 'N/A').toUpperCase();
+      const entry = parseFloat(document.getElementById('input-entry').value);
+      const stoploss = parseFloat(document.getElementById('input-stoploss').value);
+      const takeprofit = parseFloat(document.getElementById('input-takeprofit').value) || 0;
+      const riskPercent = parseFloat(document.getElementById('input-risk').value);
+      const memo = document.getElementById('trade-memo').value || '';
+      const qtyStr = document.getElementById('res-qty').textContent;
+      const qty = parseFloat(qtyStr.replace(/,/g, ''));
+
+      if (!qty || qty <= 0) {
+        showToast("수량이 0 이상일 때만 거래 기록을 저장할 수 있습니다.", 'error');
+        return;
+      }
+
+      const logItem = {
+        id: Date.now().toString(),
+        date: new Date().toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
+        ticker: ticker,
+        market: state.market,
+        currency: state.currency,
+        direction: state.direction,
+        entry: entry,
+        stoploss: stoploss,
+        takeprofit: takeprofit,
+        risk: riskPercent,
+        qty: qty,
+        unitName: state.unitName,
+        memo: memo
+      };
+
+      if (state.user && db) {
+        // Path following RULE 1
+        const logRef = db.collection('artifacts').doc(appId).collection('users').doc(state.user.uid).collection('trade_logs');
+        logRef.add({
+          ...logItem,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        }).then(() => {
+          document.getElementById('trade-memo').value = "";
+          showToast("클라우드 저널에 저장이 완료되었습니다.", 'success');
+        }).catch(err => {
+          console.error("Firestore error:", err);
+          saveToLocalLogs(logItem);
+        });
+      } else {
+        saveToLocalLogs(logItem);
+      }
+    }
+
+    function saveToLocalLogs(item) {
+      state.logs.unshift(item);
+      localStorage.setItem('trade_logs_local', JSON.stringify(state.logs));
+      renderTradeLogs(state.logs);
+      document.getElementById('trade-memo').value = "";
+      showToast("로컬 일지에 저장되었습니다.", 'success');
+    }
+
+    function loadLocalLogs() {
+      const stored = localStorage.getItem('trade_logs_local');
+      if (stored) {
+        try { state.logs = JSON.parse(stored); } catch(e) { state.logs = []; }
+      }
+      renderTradeLogs(state.logs);
+    }
+
+    function subscribeTradeLogs() {
+      if (!state.user || !db) return;
+      const logRef = db.collection('artifacts').doc(appId).collection('users').doc(state.user.uid).collection('trade_logs');
+      
+      logRef.onSnapshot(snapshot => {
+        const fetched = [];
+        snapshot.forEach(doc => {
+          fetched.push({ id: doc.id, ...doc.data() });
+        });
+        fetched.sort((a, b) => (b.id - a.id));
+        state.logs = fetched;
+        renderTradeLogs(fetched);
+      }, err => {
+        console.error("Snapshot fail", err);
+        loadLocalLogs();
+      });
+    }
+
+    function deleteLog(id) {
+      if (state.user && db) {
+        db.collection('artifacts').doc(appId).collection('users').doc(state.user.uid).collection('trade_logs').doc(id).delete()
+          .then(() => showToast("기록이 삭제되었습니다."))
+          .catch(err => console.error(err));
+      } else {
+        state.logs = state.logs.filter(item => item.id !== id);
+        localStorage.setItem('trade_logs_local', JSON.stringify(state.logs));
+        renderTradeLogs(state.logs);
+        showToast("기록이 삭제되었습니다.");
+      }
+    }
+
+    function renderTradeLogs(logs) {
+      const tbody = document.getElementById('trade-log-tbody');
+      if (!logs || logs.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="10" class="py-8 text-center text-neutral-500 font-mono">저장된 거래 기록이 없습니다.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = logs.map(log => `
+        <tr class="hover:bg-neutral-900 font-mono transition-colors">
+          <td class="py-3 px-3 text-neutral-400 text-[11px]">${log.date || ''}</td>
+          <td class="py-3 px-3 font-bold text-white">${log.ticker}</td>
+          <td class="py-3 px-3 font-bold ${log.direction === 'LONG' ? 'text-white' : 'text-neutral-400'}">${log.direction}</td>
+          <td class="py-3 px-3 text-right">${formatNum(log.entry)} ${log.currency}</td>
+          <td class="py-3 px-3 text-right text-neutral-400">${formatNum(log.stoploss)} ${log.currency}</td>
+          <td class="py-3 px-3 text-right text-white">${log.takeprofit ? formatNum(log.takeprofit) + ' ' + log.currency : '-'}</td>
+          <td class="py-3 px-3 text-right text-white">${log.risk}%</td>
+          <td class="py-3 px-3 text-right font-bold text-neutral-100">${formatNum(log.qty, 0)} ${log.unitName || '주'}</td>
+          <td class="py-3 px-3 text-neutral-400 max-w-xs truncate font-sans" title="${log.memo || ''}">${log.memo || '-'}</td>
+          <td class="py-3 px-3 text-center">
+            <button onclick="deleteLog('${log.id}')" class="text-neutral-500 hover:text-white transition-colors p-1">
+              <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+            </button>
+          </td>
+        </tr>
+      `).join('');
+
+      lucide.createIcons();
+    }
+
+    function exportLogsToCSV() {
+      if (state.logs.length === 0) {
+        showToast("내보낼 거래 기록이 없습니다.", 'error');
+        return;
+      }
+
+      let csv = "Date,Ticker,Market,Direction,Entry,StopLoss,TakeProfit,Risk%,Quantity,Memo\n";
+      state.logs.forEach(row => {
+        csv += `"${row.date}","${row.ticker}","${row.market}","${row.direction}",${row.entry},${row.stoploss},${row.takeprofit || 0},${row.risk},${row.qty},"${(row.memo || '').replace(/"/g, '""')}"\n`;
+      });
+
+      const blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `trade_journal_${new Date().toISOString().slice(0, 10)}.csv`;
+      link.click();
+      showToast("CSV 파일이 생성 및 다운로드되었습니다.", 'success');
+    }
+
+    // --- AUXILIARY TOOL CALCULATIONS ---
+    function applyDCAToMain() {
+      const p1 = parseFloat(document.getElementById('dca-price-1').value) || 0;
+      const r1 = parseFloat(document.getElementById('dca-ratio-1').value) || 0;
+      const p2 = parseFloat(document.getElementById('dca-price-2').value) || 0;
+      const r2 = parseFloat(document.getElementById('dca-ratio-2').value) || 0;
+      const p3 = parseFloat(document.getElementById('dca-price-3').value) || 0;
+      const r3 = parseFloat(document.getElementById('dca-ratio-3').value) || 0;
+
+      const totalRatio = r1 + r2 + r3;
+      if (totalRatio === 0) return;
+
+      const avgPrice = ((p1 * r1) + (p2 * r2) + (p3 * r3)) / totalRatio;
+      document.getElementById('dca-avg-res').textContent = formatNum(avgPrice, 4);
+
+      document.getElementById('input-entry').value = avgPrice.toFixed(2);
+      closeModal('scale-modal');
+      calculate();
+      showToast("가중 평균 진입가가 메인 입력창에 반영되었습니다.", 'success');
+    }
+
+    function calcRecovery() {
+      const dd = parseFloat(document.getElementById('input-drawdown').value) || 0;
+      if (dd >= 100) {
+        document.getElementById('res-recovery-pct').textContent = "불가능 (100% 전액 손실)";
+        return;
+      }
+      const gainNeeded = (dd / (100 - dd)) * 100;
+      document.getElementById('res-recovery-pct').textContent = `+${formatNum(gainNeeded, 2)}%`;
+    }
+
+    function calcATRStop() {
+      const entry = parseFloat(document.getElementById('atr-entry').value) || parseFloat(document.getElementById('input-entry').value) || 0;
+      const atr = parseFloat(document.getElementById('atr-val').value) || 0;
+      const mult = parseFloat(document.getElementById('atr-mult').value) || 2.0;
+
+      if (entry <= 0 || atr <= 0) return;
+
+      let sl = 0;
+      if (state.direction === 'LONG') {
+        sl = entry - (atr * mult);
+      } else {
+        sl = entry + (atr * mult);
+      }
+
+      document.getElementById('res-atr-sl').textContent = formatNum(sl, 4);
+    }
+
+    function applyATRToMain() {
+      const slValStr = document.getElementById('res-atr-sl').textContent;
+      const slVal = parseFloat(slValStr.replace(/,/g, ''));
+
+      if (!isNaN(slVal) && slVal > 0) {
+        document.getElementById('input-stoploss').value = slVal.toFixed(2);
+        closeModal('atr-modal');
+        calculate();
+        showToast("ATR 손절가가 적용되었습니다.", 'success');
+      }
+    }
+
+    // --- AUTH UI HANDLERS ---
+    function toggleAuthModal() {
+      const modal = document.getElementById('auth-modal');
+      modal.classList.toggle('hidden');
+    }
+
+    function updateAuthUI() {
+      const btnText = document.getElementById('auth-btn-text');
+      const notice = document.getElementById('log-notice');
+
+      if (state.user) {
+        const uidShort = state.user.uid.substring(0, 6);
+        btnText.textContent = `계정: ${uidShort}`;
+        notice.textContent = "클라우드 Firestore 동기화 활성";
+        notice.className = "text-xs px-3 py-1 bg-white text-black rounded-lg font-bold border border-white font-mono";
+      } else {
+        btnText.textContent = "게스트 모드";
+        notice.textContent = "로컬 브라우저 저장 모드";
+        notice.className = "text-xs px-3 py-1 bg-neutral-900 text-neutral-400 rounded-lg border border-neutral-700 font-mono";
+      }
+    }
+
+    function handleAnonymousAuth() {
+      if (auth) {
+        auth.signInAnonymously().then(() => {
+          toggleAuthModal();
+          showToast("익명 계정 동기화가 활성화되었습니다.", 'success');
+        });
+      }
+    }
+  </script>
+</body>
+</html>
